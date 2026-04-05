@@ -1,9 +1,9 @@
 {
   "models": [
-    { "name": "Qwen 3.6 Plus", "value": "qwen/qwen3.6-plus:free" },
+    { "name": "Qwen 3.6 Plus", "value": "qwen/qwen-2.5-72b-instruct:free" },
     { "name": "Stepfun 3.5 Flash", "value": "stepfun/step-3.5-flash:free" },
-    { "name": "Nvidia Nemotron", "value": "nvidia/nemotron-3-super-120b-a12b:free" },
-    { "name": "GLM 4.5 Air", "value": "z-ai/glm-4.5-air:free" }
+    { "name": "Nvidia Nemotron", "value": "nvidia/nemotron-4-340b-instruct:free" },
+    { "name": "GLM 4.5 Air", "value": "z-ai/glm-4-9b-chat:free" }
   ],
   "systemPrompt": "You are a helpful AI assistant."
 }
