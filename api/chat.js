@@ -6,10 +6,9 @@ export default async function handler(req, res) {
     return res.status(405).send('Method Not Allowed');
   }
 
-  const { messages } = req.body;
+  const { messages, model } = req.body;
 
   try {
-    // Send the request to OpenRouter securely
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -17,7 +16,8 @@ export default async function handler(req, res) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: config.modelName,
+        // Use the dropdown model, or fallback to the first one in config
+        model: model || config.models[0].value, 
         messages: [
           { role: "system", content: config.systemPrompt },
           ...messages
@@ -27,7 +27,12 @@ export default async function handler(req, res) {
 
     const data = await response.json();
     
-    // Send the AI's reply back to your frontend
+    // Check if OpenRouter sent an error
+    if (data.error) {
+       return res.status(500).json({ error: data.error.message });
+    }
+    
+    // Send the reply back
     res.status(200).json({ 
       reply: data.choices[0].message.content 
     });
