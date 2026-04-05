@@ -4,11 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>My AI Assistant</title>
-  
   <script src="https://cdn.tailwindcss.com"></script>
-  
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-
   <style>
     .markdown-body p { margin-bottom: 0.75rem; }
     .markdown-body p:last-child { margin-bottom: 0; }
@@ -22,7 +19,7 @@
 
   <div id="login-overlay" class="absolute inset-0 bg-[#212121] z-50 flex flex-col items-center justify-center">
     <h2 class="text-2xl font-bold mb-6">Login to AI Assistant</h2>
-    <input type="password" id="password-input" placeholder="Enter Password" class="bg-[#2f2f2f] text-white px-4 py-2 rounded-md mb-4 border border-gray-600 outline-none">
+    <input type="password" id="password-input" placeholder="Enter Password" autocomplete="new-password" class="bg-[#2f2f2f] text-white px-4 py-2 rounded-md mb-4 border border-gray-600 outline-none">
     <button id="login-btn" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-md transition-colors">Login</button>
   </div>
 
@@ -31,6 +28,7 @@
       <h1 class="text-xl font-semibold">My AI Assistant</h1>
       <div class="flex gap-2">
         <button id="clear-chat-btn" class="text-xs text-red-400 hover:text-red-300 mr-2">Clear History</button>
+        <button id="logout-btn" class="text-xs text-gray-400 hover:text-white mr-2">Logout</button>
         <select id="model-select" class="bg-[#2f2f2f] text-sm text-gray-300 border border-gray-600 rounded-md px-3 py-1.5 outline-none cursor-pointer hover:bg-[#3a3a3a] transition-colors"></select>
       </div>
     </header>
@@ -54,6 +52,7 @@
     const appContainer = document.getElementById('app-container');
     const passwordInput = document.getElementById('password-input');
     const loginBtn = document.getElementById('login-btn');
+    const logoutBtn = document.getElementById('logout-btn');
     
     const chatBox = document.getElementById('chat-box');
     const form = document.getElementById('chat-form');
@@ -64,9 +63,34 @@
     const clearChatBtn = document.getElementById('clear-chat-btn');
 
     let messages = [];
-    let savedPassword = sessionStorage.getItem('app_auth') || '';
 
-    // 1. Load Models into Dropdown
+    // --- 1-DAY LOGIN LOGIC ---
+    function savePasswordForOneDay(pwd) {
+      const oneDayInMs = 24 * 60 * 60 * 1000;
+      const data = { password: pwd, expiry: new Date().getTime() + oneDayInMs };
+      localStorage.setItem('app_auth_data', JSON.stringify(data));
+    }
+
+    function getSavedPassword() {
+      const dataStr = localStorage.getItem('app_auth_data');
+      if (!dataStr) return '';
+      try {
+        const data = JSON.parse(dataStr);
+        if (new Date().getTime() > data.expiry) {
+          localStorage.removeItem('app_auth_data'); // Expired!
+          return '';
+        }
+        return data.password;
+      } catch(e) { return ''; }
+    }
+
+    function clearPassword() {
+      localStorage.removeItem('app_auth_data');
+    }
+
+    let savedPassword = getSavedPassword();
+
+    // --- APP LOGIC ---
     async function loadConfig() {
       try {
         const response = await fetch('/config.json');
@@ -81,7 +105,6 @@
     }
     loadConfig();
 
-    // 2. Database Logic (Supabase)
     async function saveChatHistory() {
       const historyToSave = messages.slice(-50);
       await fetch('/api/db', {
@@ -94,18 +117,20 @@
     async function loadChatHistory() {
       try {
         const response = await fetch('/api/db', { headers: { 'Authorization': savedPassword } });
-        if (response.status === 401) throw new Error("Unauthorized");
+        if (response.status === 401) {
+          alert("Incorrect Password or Session Expired!");
+          clearPassword();
+          loginOverlay.classList.remove('hidden');
+          appContainer.classList.add('hidden');
+          return;
+        }
         const data = await response.json();
         if (data.history && data.history.length > 0) {
           messages = data.history;
           if (welcomeMsg) welcomeMsg.remove();
           messages.forEach(msg => appendMessageUI(msg.role, msg.content));
         }
-      } catch (error) {
-        console.error("Failed to load history.");
-        sessionStorage.removeItem('app_auth');
-        window.location.reload();
-      }
+      } catch (error) { console.error("Failed to load history.", error); }
     }
 
     if (savedPassword) {
@@ -118,11 +143,16 @@
       const pwd = passwordInput.value.trim();
       if(pwd) {
         savedPassword = pwd;
-        sessionStorage.setItem('app_auth', pwd);
+        savePasswordForOneDay(pwd);
         loginOverlay.classList.add('hidden');
         appContainer.classList.remove('hidden');
         loadChatHistory();
       }
+    });
+
+    logoutBtn.addEventListener('click', () => {
+      clearPassword();
+      window.location.reload();
     });
 
     clearChatBtn.addEventListener('click', async () => {
@@ -133,7 +163,6 @@
       }
     });
 
-    // 3. Draw UI Text (WITH MARKDOWN & COPY BUTTONS)
     function appendMessageUI(role, text) {
       if (welcomeMsg) welcomeMsg.remove(); 
       const msgDiv = document.createElement('div');
@@ -147,25 +176,15 @@
       contentDiv.className = 'flex-1 overflow-x-hidden leading-relaxed markdown-body';
       
       if (role === 'user') {
-        // User messages stay plain text
         contentDiv.textContent = text;
       } else {
-        // AI messages get converted to Markdown HTML
         contentDiv.innerHTML = marked.parse(text);
-        
-        // Find all code blocks the AI just generated
         const preTags = contentDiv.querySelectorAll('pre');
         preTags.forEach(pre => {
-          // Style the black box for the code
           pre.className = 'bg-black text-gray-300 p-4 rounded-md my-4 relative overflow-x-auto group border border-gray-700';
-          
-          // Create the Copy Button
           const copyBtn = document.createElement('button');
-          // Button is invisible until hovered (group-hover:opacity-100)
           copyBtn.className = 'absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-xs text-white px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity';
           copyBtn.textContent = 'Copy';
-          
-          // Copy Logic
           copyBtn.addEventListener('click', () => {
             const codeText = pre.querySelector('code')?.innerText || pre.innerText;
             navigator.clipboard.writeText(codeText).then(() => {
@@ -173,7 +192,6 @@
               setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
             });
           });
-          
           pre.appendChild(copyBtn);
         });
       }
@@ -184,7 +202,6 @@
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    // 4. Send Message Logic
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const userText = input.value.trim();
@@ -215,7 +232,7 @@
 
         if (response.status === 401) {
             alert('Wrong password!');
-            sessionStorage.removeItem('app_auth');
+            clearPassword();
             window.location.reload();
             return;
         }
