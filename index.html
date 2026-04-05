@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My AI Assistant</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#212121] text-gray-100 font-sans h-screen flex flex-col">
+
+  <header class="flex items-center justify-center p-4 border-b border-gray-700 bg-[#212121] z-10">
+    <h1 class="text-xl font-semibold">My AI Assistant</h1>
+  </header>
+
+  <main id="chat-box" class="flex-1 overflow-y-auto p-4 w-full max-w-3xl mx-auto pb-32">
+    <div id="welcome-msg" class="flex items-center justify-center h-full text-gray-500">
+      <p>How can I help you today?</p>
+    </div>
+  </main>
+
+  <div class="fixed bottom-0 w-full bg-gradient-to-t from-[#212121] via-[#212121] to-transparent pt-6 pb-6">
+    <form id="chat-form" class="max-w-3xl mx-auto flex items-center bg-[#2f2f2f] rounded-full px-4 py-2 shadow-lg border border-gray-600">
+      <input
+        id="chat-input"
+        class="flex-1 bg-transparent border-none outline-none text-white px-2 py-2 placeholder-gray-400"
+        placeholder="Message AI..."
+        autocomplete="off"
+      />
+      <button 
+        id="submit-btn"
+        type="submit" 
+        class="ml-2 bg-white text-black rounded-full p-2 w-10 h-10 flex items-center justify-center font-bold hover:bg-gray-200 transition-colors"
+      >
+        ↑
+      </button>
+    </form>
+  </div>
+
+  <script>
+    const chatBox = document.getElementById('chat-box');
+    const form = document.getElementById('chat-form');
+    const input = document.getElementById('chat-input');
+    const welcomeMsg = document.getElementById('welcome-msg');
+    const submitBtn = document.getElementById('submit-btn');
+
+    let messages = [];
+
+    // Helper to add messages to the screen
+    function appendMessage(role, text) {
+      if (welcomeMsg) welcomeMsg.remove(); // Hide welcome text
+
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'mb-6 flex';
+      
+      const labelDiv = document.createElement('div');
+      labelDiv.className = `font-bold mr-4 ${role === 'user' ? 'text-blue-400' : 'text-green-400'}`;
+      labelDiv.textContent = role === 'user' ? 'You:' : 'AI:';
+
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'flex-1 whitespace-pre-wrap leading-relaxed';
+      contentDiv.textContent = text;
+
+      msgDiv.appendChild(labelDiv);
+      msgDiv.appendChild(contentDiv);
+      chatBox.appendChild(msgDiv);
+      
+      // Auto-scroll to bottom
+      chatBox.scrollTop = chatBox.scrollHeight;
+      return msgDiv;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const userText = input.value.trim();
+      if (!userText) return;
+
+      // 1. Add User Message
+      messages.push({ role: "user", content: userText });
+      appendMessage('user', userText);
+      input.value = '';
+      
+      // Lock input while waiting
+      input.disabled = true;
+      submitBtn.disabled = true;
+
+      // Add "Thinking..." indicator
+      const loadingDiv = document.createElement('div');
+      loadingDiv.className = "text-gray-500 italic flex animate-pulse mb-6";
+      loadingDiv.innerHTML = '<span class="font-bold mr-4 text-green-400">AI:</span> Thinking...';
+      chatBox.appendChild(loadingDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+
+      // 2. Call the Vercel API we created
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages })
+        });
+        
+        const data = await response.json();
+        
+        // Remove "Thinking..." indicator
+        loadingDiv.remove();
+
+        if (data.reply) {
+          messages.push({ role: "assistant", content: data.reply });
+          appendMessage('assistant', data.reply);
+        } else {
+          appendMessage('assistant', "Error: Could not get a response.");
+        }
+      } catch (error) {
+        loadingDiv.remove();
+        appendMessage('assistant', "Error connecting to the server.");
+      }
+
+      // Unlock input
+      input.disabled = false;
+      submitBtn.disabled = false;
+      input.focus();
+    });
+  </script>
+</body>
+</html>
