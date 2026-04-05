@@ -8,8 +8,10 @@
 </head>
 <body class="bg-[#212121] text-gray-100 font-sans h-screen flex flex-col">
 
-  <header class="flex items-center justify-center p-4 border-b border-gray-700 bg-[#212121] z-10">
+  <header class="flex items-center justify-between p-4 border-b border-gray-700 bg-[#212121] z-10">
     <h1 class="text-xl font-semibold">My AI Assistant</h1>
+    <select id="model-select" class="bg-[#2f2f2f] text-sm text-gray-300 border border-gray-600 rounded-md px-3 py-1.5 outline-none cursor-pointer hover:bg-[#3a3a3a] transition-colors">
+      </select>
   </header>
 
   <main id="chat-box" class="flex-1 overflow-y-auto p-4 w-full max-w-3xl mx-auto pb-32">
@@ -29,7 +31,7 @@
       <button 
         id="submit-btn"
         type="submit" 
-        class="ml-2 bg-white text-black rounded-full p-2 w-10 h-10 flex items-center justify-center font-bold hover:bg-gray-200 transition-colors"
+        class="ml-2 bg-white text-black rounded-full p-2 w-10 h-10 flex items-center justify-center font-bold hover:bg-gray-200 transition-colors disabled:opacity-50"
       >
         ↑
       </button>
@@ -42,12 +44,32 @@
     const input = document.getElementById('chat-input');
     const welcomeMsg = document.getElementById('welcome-msg');
     const submitBtn = document.getElementById('submit-btn');
+    const modelSelect = document.getElementById('model-select');
 
     let messages = [];
 
-    // Helper to add messages to the screen
+    // 1. Load the models from config.json
+    async function loadConfig() {
+      try {
+        const response = await fetch('/config.json');
+        const config = await response.json();
+        
+        config.models.forEach(model => {
+          const option = document.createElement('option');
+          option.value = model.value;
+          option.textContent = model.name;
+          modelSelect.appendChild(option);
+        });
+      } catch (error) {
+        console.error("Failed to load config.json");
+      }
+    }
+    
+    loadConfig();
+
+    // 2. Chat UI Helper
     function appendMessage(role, text) {
-      if (welcomeMsg) welcomeMsg.remove(); // Hide welcome text
+      if (welcomeMsg) welcomeMsg.remove(); 
 
       const msgDiv = document.createElement('div');
       msgDiv.className = 'mb-6 flex';
@@ -64,57 +86,57 @@
       msgDiv.appendChild(contentDiv);
       chatBox.appendChild(msgDiv);
       
-      // Auto-scroll to bottom
       chatBox.scrollTop = chatBox.scrollHeight;
       return msgDiv;
     }
 
+    // 3. Handle sending messages
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const userText = input.value.trim();
       if (!userText) return;
 
-      // 1. Add User Message
+      // Add user text
       messages.push({ role: "user", content: userText });
       appendMessage('user', userText);
       input.value = '';
       
-      // Lock input while waiting
+      // Lock UI
       input.disabled = true;
       submitBtn.disabled = true;
 
-      // Add "Thinking..." indicator
       const loadingDiv = document.createElement('div');
       loadingDiv.className = "text-gray-500 italic flex animate-pulse mb-6";
       loadingDiv.innerHTML = '<span class="font-bold mr-4 text-green-400">AI:</span> Thinking...';
       chatBox.appendChild(loadingDiv);
       chatBox.scrollTop = chatBox.scrollHeight;
 
-      // 2. Call the Vercel API we created
+      // Call API
       try {
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages })
+          body: JSON.stringify({ 
+            messages: messages,
+            model: modelSelect.value 
+          })
         });
         
         const data = await response.json();
-        
-        // Remove "Thinking..." indicator
         loadingDiv.remove();
 
         if (data.reply) {
           messages.push({ role: "assistant", content: data.reply });
           appendMessage('assistant', data.reply);
         } else {
-          appendMessage('assistant', "Error: Could not get a response.");
+          appendMessage('assistant', "Error: " + (data.error || "Could not get a response."));
         }
       } catch (error) {
         loadingDiv.remove();
         appendMessage('assistant', "Error connecting to the server.");
       }
 
-      // Unlock input
+      // Unlock UI
       input.disabled = false;
       submitBtn.disabled = false;
       input.focus();
