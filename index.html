@@ -13,6 +13,9 @@
     .markdown-body pre code { background-color: transparent; padding: 0; font-size: 0.9em; color: #e5e7eb; }
     .markdown-body ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.75rem; }
     .markdown-body ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.75rem; }
+    /* Hide scrollbar for sidebar to keep it clean */
+    #sidebar-chat-list::-webkit-scrollbar { width: 4px; }
+    #sidebar-chat-list::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
   </style>
 </head>
 <body class="bg-[#212121] text-gray-100 font-sans h-screen flex relative overflow-hidden">
@@ -25,7 +28,7 @@
 
   <aside id="sidebar" class="w-64 bg-[#171717] flex-shrink-0 flex-col hidden md:flex absolute md:relative z-40 h-full border-r border-gray-700 transition-transform">
     <div class="p-3 flex justify-between items-center md:block">
-        <button id="new-chat-btn" class="flex-1 flex items-center gap-2 bg-[#212121] hover:bg-[#2f2f2f] p-3 rounded-md transition-colors border border-gray-600">
+        <button id="new-chat-btn" class="flex-1 flex items-center gap-2 bg-[#212121] hover:bg-[#2f2f2f] p-3 rounded-md transition-colors border border-gray-600 w-full">
             <span class="text-xl">+</span> New Chat
         </button>
         <button id="close-sidebar-btn" class="md:hidden ml-2 text-gray-400 hover:text-white p-2">✕</button>
@@ -78,7 +81,7 @@
     const sidebarChatList = document.getElementById('sidebar-chat-list');
 
     // --- State Management ---
-    let chatSessions = []; // Array holding up to 5 chat objects
+    let chatSessions = [];
     let currentSessionId = null;
 
     // --- Authentication (1 Day Expiry) ---
@@ -118,20 +121,15 @@
     loadConfig();
 
     async function saveChatHistory() {
-      // 1. Keep max 50 messages per session to prevent database bloat
       chatSessions.forEach(session => {
           if(session.messages.length > 50) session.messages = session.messages.slice(-50);
       });
-      
-      // 2. Keep only the last 5 sessions
-      if (chatSessions.length > 5) {
-          chatSessions = chatSessions.slice(-5);
-      }
+      if (chatSessions.length > 5) chatSessions = chatSessions.slice(-5);
 
       await fetch('/api/db', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': savedPassword },
-        body: JSON.stringify({ history: JSON.stringify(chatSessions) }) // Save the whole array
+        body: JSON.stringify({ history: JSON.stringify(chatSessions) })
       });
     }
 
@@ -147,15 +145,14 @@
         const data = await response.json();
         
         if (data.history && data.history.length > 0) {
-          // Detect if it's the old format (just an array of messages) and migrate it
           if (data.history[0].role) {
               chatSessions = [{ id: Date.now().toString(), title: "Previous Chat", messages: data.history }];
           } else {
               chatSessions = data.history;
           }
-          currentSessionId = chatSessions[chatSessions.length - 1].id; // Open most recent
+          currentSessionId = chatSessions[chatSessions.length - 1].id;
         } else {
-          startNewSession(); // Start fresh if empty
+          startNewSession();
         }
         
         renderSidebar();
@@ -168,7 +165,7 @@
     function startNewSession() {
       const newId = Date.now().toString();
       chatSessions.push({ id: newId, title: "New Chat", messages: [] });
-      if (chatSessions.length > 5) chatSessions.shift(); // Enforce 5 max rule
+      if (chatSessions.length > 5) chatSessions.shift();
       
       currentSessionId = newId;
       renderSidebar();
@@ -180,23 +177,56 @@
       currentSessionId = id;
       renderSidebar();
       renderActiveChat();
+      if(window.innerWidth < 768) sidebar.classList.add('hidden');
+    }
+
+    // NEW: Function to delete a single session
+    async function deleteSession(id, event) {
+      event.stopPropagation(); // Prevents the chat from opening when you click the delete button
       
-      // Auto-close sidebar on mobile after clicking a chat
-      if(window.innerWidth < 768) {
-         sidebar.classList.add('hidden');
+      if(!confirm('Delete this chat?')) return;
+
+      // Filter out the deleted chat
+      chatSessions = chatSessions.filter(session => session.id !== id);
+
+      // If we deleted the last chat, start a fresh one
+      if (chatSessions.length === 0) {
+        startNewSession(); 
+      } else {
+        // If we deleted the chat we were currently looking at, switch to the newest available one
+        if (currentSessionId === id) {
+          currentSessionId = chatSessions[chatSessions.length - 1].id;
+        }
+        renderSidebar();
+        renderActiveChat();
+        await saveChatHistory();
       }
     }
 
     function renderSidebar() {
       sidebarChatList.innerHTML = '';
-      // Loop backwards so newest chats are at the top
       [...chatSessions].reverse().forEach(session => {
-        const btn = document.createElement('button');
+        // Create a wrapper for the chat button and the delete button
+        const wrapper = document.createElement('div');
+        wrapper.className = 'flex items-center gap-1 mb-1 w-full group';
+
         const isActive = session.id === currentSessionId;
-        btn.className = `w-full text-left p-2 rounded-md truncate text-sm transition-colors mb-1 ${isActive ? 'bg-[#2f2f2f] text-white' : 'text-gray-400 hover:bg-[#212121]'}`;
-        btn.textContent = session.title;
+        
+        // The main chat button
+        const btn = document.createElement('button');
+        btn.className = `flex-1 text-left p-2 rounded-md truncate text-sm transition-colors ${isActive ? 'bg-[#2f2f2f] text-white' : 'text-gray-400 hover:bg-[#212121]'}`;
+        btn.textContent = session.title || "New Chat";
         btn.onclick = () => switchSession(session.id);
-        sidebarChatList.appendChild(btn);
+
+        // The single delete button (✕)
+        const delBtn = document.createElement('button');
+        delBtn.className = `p-2 rounded-md text-gray-500 hover:text-red-400 hover:bg-[#212121] transition-colors ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`;
+        delBtn.innerHTML = '✕';
+        delBtn.onclick = (e) => deleteSession(session.id, e);
+
+        wrapper.appendChild(btn);
+        wrapper.appendChild(delBtn);
+        sidebarChatList.appendChild(wrapper);
       });
     }
 
@@ -277,7 +307,7 @@
     document.getElementById('clear-chat-btn').addEventListener('click', async () => {
       if(confirm('Erase ALL 5 chat histories permanently?')) {
         chatSessions = [];
-        startNewSession(); // Resets UI and triggers saveChatHistory()
+        startNewSession(); 
       }
     });
 
@@ -286,7 +316,6 @@
       window.location.reload();
     });
 
-    // Mobile Sidebar Toggle
     document.getElementById('mobile-menu-btn').addEventListener('click', () => {
       sidebar.classList.remove('hidden');
       sidebar.classList.add('flex');
@@ -304,7 +333,6 @@
 
       const session = chatSessions.find(s => s.id === currentSessionId);
       
-      // Auto-name the chat if it's the first message
       if (session.messages.length === 0) {
           session.title = userText.substring(0, 20) + (userText.length > 20 ? '...' : '');
           renderSidebar();
