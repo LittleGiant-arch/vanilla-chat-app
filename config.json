@@ -1,0 +1,4 @@
+{
+  "modelName": "google/gemma-7b-it:free",
+  "systemPrompt": "You are a helpful AI assistant."
+}
